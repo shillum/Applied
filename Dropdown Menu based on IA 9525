@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Website IA Prototype</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #fafafa;
+    }
+    nav {
+      display: flex;
+      background: #0056ff;
+      padding: 1rem;
+    }
+    nav > div {
+      position: relative;
+      margin-right: 2rem;
+    }
+    nav > div > a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: #fff;
+      border: 1px solid #ccc;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      min-width: 200px;
+      z-index: 1000;
+    }
+    .dropdown-menu li {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #eee;
+    }
+    .dropdown-menu li:last-child {
+      border-bottom: none;
+    }
+    .dropdown-menu li a {
+      color: #333;
+      text-decoration: none;
+      display: block;
+    }
+    .dropdown-menu li a:hover {
+      background: #f5f5f5;
+    }
+    nav > div:hover .dropdown-menu {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div>
+      <a href="#">Products</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Tools for Vehicle Intelligence</a></li>
+        <li><a href="#">Vehicle OS</a></li>
+        <li><a href="#">Self-Driving System (SDS)</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Automotive</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Relevant Products</a></li>
+        <li><a href="#">Use Cases</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Defense</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Relevant Products</a></li>
+        <li><a href="#">Use Cases</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Trucking</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Relevant Products</a></li>
+        <li><a href="#">Use Cases</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Mining</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Relevant Products</a></li>
+        <li><a href="#">Use Cases</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Construction</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Relevant Products</a></li>
+        <li><a href="#">Use Cases</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">Company</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">About</a></li>
+        <li><a href="#">Careers</a></li>
+        <li><a href="#">Investors</a></li>
+      </ul>
+    </div>
+
+    <div>
+      <a href="#">News</a>
+      <ul class="dropdown-menu">
+        <li><a href="#">Newsroom</a></li>
+        <li><a href="#">Blog</a></li>
+        <li><a href="#">Events</a></li>
+        <li><a href="#">Customer Stories</a></li>
+      </ul>
+    </div>
+  </nav>
+</body>
+</html>
