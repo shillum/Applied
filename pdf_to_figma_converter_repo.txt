@@ -1,0 +1,363 @@
+# pdf-to-figma-converter (packaged repo)
+
+This repository contains a CLI builder and a minimal Figma plugin to convert PDF floorplans into editable Figma vectors. It includes:
+
+- `builder/` — Python scripts and helpers to convert PDF pages into SVGs (vector extraction + raster tracing fallback).
+- `figma-plugin/` — a minimal Figma plugin that imports SVG strings and creates editable Figma vector nodes using `createNodeFromSvg`.
+- `README.md` — usage instructions.
+- `LICENSE`, `.gitignore`, `requirements.txt`.
+
+---
+
+## File tree
+
+```
+pdf-to-figma-converter/
+├─ README.md
+├─ LICENSE
+├─ requirements.txt
+├─ .gitignore
+├─ builder/
+│  ├─ pdf_to_svgs.py
+│  ├─ utils.py
+│  └─ example.env
+└─ figma-plugin/
+   ├─ manifest.json
+   ├─ ui.html
+   ├─ code.js
+   └─ plugin-README.md
+```
+
+---
+
+## README.md (top-level)
+
+```markdown
+# PDF → Figma Converter
+
+A packaged repo that automates PDF floorplan → SVG conversion and provides a small Figma plugin to import those SVGs as editable Figma vectors.
+
+## Structure
+- `builder/` — Python CLI to produce one SVG per PDF page. Preserves vector pages when possible, traces raster pages using Potrace/ImageMagick otherwise.
+- `figma-plugin/` — Minimal plugin that accepts SVG text/files and converts each into native Figma vector nodes.
+
+## Quick start
+1. Install Python deps: `pip install -r requirements.txt`
+2. Install external tools (example): `brew install potrace imagemagick poppler` (macOS) or your distro equivalents.
+3. Convert a PDF: `python builder/pdf_to_svgs.py path/to/plan.pdf --out artifacts --use-pdf2svg`
+4. Open Figma, create or install the plugin from `figma-plugin/`, run it, and import the generated `artifacts/<pdfname>/page-*.svg` files using its UI.
+
+Detailed notes are in `builder/` and `figma-plugin/plugin-README.md`.
+
+License: MIT
+```
+```
+
+---
+
+## LICENSE (MIT)
+
+```text
+MIT License
+
+Copyright (c) 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+... (standard MIT text) ...
+```
+
+---
+
+## requirements.txt
+
+```
+PyMuPDF>=1.22.0
+python-magic>=0.4.27  # optional, for file-type heuristics
+```
+
+---
+
+## .gitignore
+
+```
+__pycache__/
+*.pyc
+artifacts/
+.env
+tmp.*
+```
+
+---
+
+## builder/pdf_to_svgs.py
+
+```python
+#!/usr/bin/env python3
+"""
+pdf_to_svgs.py
+Convert each page of a PDF into SVG, preserving vector content if present,
+otherwise raster->vector tracing fallback.
+
+Usage:
+  python pdf_to_svgs.py input.pdf --out artifacts --use-pdf2svg
+
+Outputs: ./<out>/<pdf_basename>/page-<n>.svg
+"""
+import os
+import sys
+import argparse
+import subprocess
+import fitz  # PyMuPDF
+
+def ensure_dir(p):
+    os.makedirs(p, exist_ok=True)
+
+def page_has_drawings(page):
+    try:
+        drawings = page.get_drawings()
+        return bool(drawings)
+    except Exception:
+        # if get_drawings not available or fails, fallback to False
+        return False
+
+def export_vector_svg_with_pymupdf(page, out_path):
+    # PyMuPDF: page.get_svg() produces an SVG string
+    svg = page.get_svg()
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(svg)
+
+def export_via_pdf2svg(pdf_path, page_number, out_path):
+    # Requires pdf2svg in PATH. Some systems name paginated argument differently.
+    cmd = ['pdf2svg', pdf_path, out_path, str(page_number)]
+    subprocess.run(cmd, check=True)
+
+def render_page_png(page, out_png, zoom=4.0):
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    pix.save(out_png)
+
+def raster_trace_with_potrace(png_path, out_svg_path, use_imagemagick=True):
+    # Try mkbitmap/potrace flow first, fallback to convert -> potrace
+    try:
+        # mkbitmap may not be available; try potrace directly using a pgm
+        tmp_pgm = 'tmp_trace.pgm'
+        if use_imagemagick:
+            subprocess.run(['convert', png_path, '-colorspace', 'gray', tmp_pgm], check=True)
+        else:
+            # Try mkbitmap route
+            subprocess.run(['mkbitmap', png_path, '-o', 'tmp_trace.pbm'], check=True)
+            tmp_pgm = 'tmp_trace.pbm'
+        subprocess.run(['potrace', tmp_pgm, '-s', '-o', out_svg_path], check=True)
+    finally:
+        for t in ('tmp_trace.pgm', 'tmp_trace.pbm'):
+            try:
+                if os.path.exists(t):
+                    os.remove(t)
+            except Exception:
+                pass
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('pdf', help='Input PDF')
+    parser.add_argument('--out', default='output', help='Output folder')
+    parser.add_argument('--use-pdf2svg', action='store_true', help='Attempt pdf2svg on vector fallback')
+    args = parser.parse_args()
+
+    pdf_path = args.pdf
+    base = os.path.splitext(os.path.basename(pdf_path))[0]
+    out_dir = os.path.join(args.out, base)
+    ensure_dir(out_dir)
+
+    doc = fitz.open(pdf_path)
+    for i, page in enumerate(doc):
+        pnum = i + 1
+        svg_out = os.path.join(out_dir, f'page-{pnum}.svg')
+        try:
+            if page_has_drawings(page):
+                print(f'[{pnum}] Vector content found — exporting SVG via PyMuPDF')
+                try:
+                    export_vector_svg_with_pymupdf(page, svg_out)
+                except Exception as e:
+                    print('PyMuPDF export failed:', e)
+                    if args.use_pdf2svg:
+                        print('Trying pdf2svg CLI...')
+                        export_via_pdf2svg(pdf_path, pnum, svg_out)
+                    else:
+                        raise
+            else:
+                print(f'[{pnum}] No vector content — rasterizing and tracing')
+                png_tmp = os.path.join(out_dir, f'page-{pnum}.png')
+                render_page_png(page, png_tmp, zoom=5.0)
+                raster_trace_with_potrace(png_tmp, svg_out)
+                os.remove(png_tmp)
+        except subprocess.CalledProcessError as cpe:
+            print(f'External tool failed for page {pnum}:', cpe)
+        except Exception as ex:
+            print(f'Error processing page {pnum}:', ex)
+
+    print('Done — SVGs in:', out_dir)
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## builder/utils.py (helper functions)
+
+```python
+# small utility functions used by the builder
+import os
+
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+
+```
+
+---
+
+## builder/example.env
+
+```
+# Example environment settings for the builder
+# PATH additions (if using local installs)
+# PATH=/usr/local/bin:$PATH
+```
+
+---
+
+## figma-plugin/manifest.json
+
+```json
+{
+  "name": "Import SVGs to Figma",
+  "id": "import-svgs-auto-001",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"]
+}
+```
+
+---
+
+## figma-plugin/ui.html
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Import SVGs</title>
+    <style>
+      body{font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:12px}
+      textarea{width:100%; height:160px}
+      input[type=file]{width:100%}
+      button{margin-top:8px; padding:8px 12px}
+    </style>
+  </head>
+  <body>
+    <h3>Import SVGs</h3>
+    <input id="files" type="file" accept=".svg" multiple />
+    <div style="margin-top:8px">Or paste an SVG below:</div>
+    <textarea id="svgtext" placeholder="Paste SVG text here (single or multiple, separated) -> then click Import"></textarea>
+    <div>
+      <button id="importBtn">Import</button>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById('files');
+      const text = document.getElementById('svgtext');
+      document.getElementById('importBtn').onclick = async () => {
+        const files = fileInput.files;
+        const svgs = [];
+        if (files && files.length) {
+          for (let f of files) {
+            svgs.push(await f.text());
+          }
+        }
+        if (text.value && text.value.trim().length > 0) {
+          // split multiple pasted svgs by <!--SPLIT--> marker or attempt to import whole
+          const parts = text.value.split('<!--SPLIT-->').map(s=>s.trim()).filter(Boolean);
+          svgs.push(...parts);
+        }
+        parent.postMessage({ pluginMessage: { type: 'import-svgs', svgs } }, '*');
+      };
+    </script>
+  </body>
+</html>
+```
+
+---
+
+## figma-plugin/code.js
+
+```javascript
+// Minimal Figma plugin: receive SVG(s) from UI and create native nodes via createNodeFromSvg
+figma.showUI(__html__, { width: 480, height: 420 });
+
+figma.ui.onmessage = async (msg) => {
+  if (msg.type === 'import-svgs') {
+    const svgs = msg.svgs || [];
+    if (!svgs.length) {
+      figma.notify('No SVGs provided');
+      return;
+    }
+
+    const parentFrame = figma.createFrame();
+    parentFrame.name = 'Imported Floorplans';
+    parentFrame.resize(1600, 1200);
+    parentFrame.fills = [];
+    figma.currentPage.appendChild(parentFrame);
+
+    let x = 0;
+    const gap = 40;
+    for (let svg of svgs) {
+      try {
+        const node = figma.createNodeFromSvg(svg);
+        node.x = x;
+        node.y = 0;
+        parentFrame.appendChild(node);
+        // optionally scale down very large elements
+        const maxW = 1200;
+        if (node.width > maxW) {
+          const scale = maxW / node.width;
+          node.resize(node.width * scale, node.height * scale);
+        }
+        x += node.width + gap;
+      } catch (err) {
+        console.error('SVG import failed', err);
+        figma.notify('Import error for one SVG (check console)');
+      }
+    }
+
+    figma.viewport.scrollAndZoomIntoView([parentFrame]);
+    figma.closePlugin(`Imported ${svgs.length} SVG(s)`);
+  }
+};
+```
+
+---
+
+## figma-plugin/plugin-README.md
+
+```markdown
+# Figma plugin: Import SVGs to Figma
+
+How to use
+1. In Figma desktop, go to Plugins > Development > Import plugin from manifest... and select this directory's `manifest.json`.
+2. Run plugin. Use file input to choose one or many `.svg` files produced by the builder, or paste SVG text into the textarea.
+3. Each SVG will be converted into native Figma vectors (editable) and placed into a new frame.
+
+Notes
+- The plugin uses `createNodeFromSvg`.
+- Some SVG features may import as flattened groups or shapes; test with a representative PDF first.
+```
+
+---
+
+## Final notes
+
+This packaged repo is intentionally minimal so you can tweak tracing parameters, path simplification, OCR, or a CDN upload step for fully automated flow. If you want, I can also generate a single ZIP file for download from these files — tell me and I'll create it in the environment and provide a link.
+
